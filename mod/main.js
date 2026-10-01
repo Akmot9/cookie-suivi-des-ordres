@@ -192,7 +192,8 @@
   var BANK_ROW = 'row5';
   // The game's own stylesheet styles everything inside the building rows, so the panel carries
   // its <style> inside itself (like CGHR) and marks the rules that matter as !important.
-  var PANEL_STYLE = 'background:rgba(0,0,0,0.6);color:#eee;font:11px sans-serif;padding:6px 8px;margin:4px 0;text-align:left;';
+  // position + z-index: the row's own content paints over plain flow content, so the panel must be a stacking context
+  var PANEL_STYLE = 'position:relative;z-index:300;isolation:isolate;background:rgba(0,0,0,0.6);color:#eee;font:11px sans-serif;padding:6px 8px;margin:4px 0;text-align:left;';
   var PANEL_CSS =
     '#sdoPanel{color:#eee !important;font:11px sans-serif !important;text-shadow:none !important}' +
     '#sdoPanel *{color:inherit;text-shadow:none !important;font-size:inherit;line-height:1.4}' +

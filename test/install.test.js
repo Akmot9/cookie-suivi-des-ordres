@@ -218,6 +218,7 @@ test('styles live inside the panel and critical rules are !important (game CSS o
   assert.match(style.innerHTML, /#sdoPanel\{[^}]*color:#eee !important/);
   assert.match(style.innerHTML, /\.sdo-row\{[^}]*display:grid !important/);
   assert.match(panel.style.cssText, /background:rgba\(0,0,0,0\.6\)/);
+  assert.match(panel.style.cssText, /position:relative;z-index:300/, 'panel is its own stacking context');
   doc.getElementById('sdoButton').click();
   assert.ok(panel.children.find(c => c.tagName === 'style'), 'style survives a refresh');
 });
