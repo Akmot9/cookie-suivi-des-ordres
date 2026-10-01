@@ -59,7 +59,7 @@ unknown[goodId] = qty                              // stock présent avant le su
   - `latent = valeur − capital` ;
   - `realise = proceeds − cost − fees` ;
   - `pru = capital / qtyKnown` (prix de revient unitaire).
-- Les totaux additionnent toutes les marchandises. Les quantités inconnues sont affichées à part, jamais valorisées dans le P/L.
+- Les totaux additionnent toutes les marchandises. Les quantités inconnues comptent dans la quantité détenue et dans la valeur de marché (`valueAll`), mais jamais dans le capital ni dans le P/L. *(Révisé après retour du joueur : afficher « 0 » pour un stock détenu était trompeur.)*
 - Sauvegarde : `save()` renvoie le registre en JSON compact (lots, réalisé, inconnu), et `load()` le recharge. Si le contenu est invalide, le registre repart vide, puis `reconcile` replace tout le stock en inconnu.
 
 ## Interface

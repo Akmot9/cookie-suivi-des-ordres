@@ -27,7 +27,8 @@ test('summary and rows in French with $ and cookies', () => {
   assert.match(html, /Frais payés/);
   assert.match(html, /Céréales/);
   assert.match(html, /6,00 \$/);                 // PRU of Céréales
-  assert.match(html, /\+3 coût inconnu/);
+  assert.match(html, /4 \/ 62/, 'quantity shown is everything held');
+  assert.match(html, /dont 3 au coût inconnu/);
   assert.strictEqual((html.match(/class="sdo-row"/g) || []).length, 2);
   assert.match(html, /B cookies|M cookies/);
 });
@@ -58,4 +59,21 @@ test('every summary amount is shown in $ and in cookies', () => {
   const html = render(view(), {});
   const summary = html.slice(html.indexOf('sdo-summary'), html.indexOf('sdo-head'));
   assert.strictEqual((summary.match(/cookies\)/g) || []).length, 5);
+});
+
+test('market value counts unknown-cost stock, P/L does not', () => {
+  const { Ledger: L2 } = require('../mod/main.js');
+  const L = new L2();
+  L.reconcile(2, 63);
+  const p = L.position(2, 24);
+  assert.strictEqual(p.qtyUnknown, 63);
+  assert.ok(Math.abs(p.valueAll - 63 * 24) < 1e-9);
+  assert.strictEqual(p.value, 0);
+  assert.strictEqual(p.unrealized, 0);
+  const t = L.totals({ 2: 24 });
+  assert.ok(Math.abs(t.value - 63 * 24) < 1e-9);
+  assert.strictEqual(t.unrealized, 0);
+  const html = render({ cps: 1, totals: t, goods: [{ id: 2, name: 'Beurre', val: 24, rest: 30, max: 63, position: p }] }, {});
+  assert.match(html, /1512,00 \$/);
+  assert.match(html, /hors coût inconnu/);
 });

@@ -70,8 +70,9 @@
       capital += l.qty * (l.unitPrice + l.unitFee);
       return { t: l.t, qty: l.qty, unitPrice: l.unitPrice, unitFee: l.unitFee, unrealized: l.qty * (val - l.unitPrice - l.unitFee) };
     });
+    var unknown = this.unknown[id] || 0;
     return {
-      qtyKnown: qty, qtyUnknown: this.unknown[id] || 0, capital: capital, value: qty * val,
+      qtyKnown: qty, qtyUnknown: unknown, capital: capital, value: qty * val, valueAll: (qty + unknown) * val,
       unrealized: qty * val - capital, realized: r.proceeds - r.cost - r.fees, fees: r.fees,
       pru: qty > 0 ? capital / qty : 0, lots: detail,
     };
@@ -89,7 +90,7 @@
     var self = this, t = { value: 0, capital: 0, unrealized: 0, realized: 0, fees: 0 };
     this.ids().forEach(function (id) {
       var p = self.position(id, prices[id] || 0);
-      t.value += p.value; t.capital += p.capital; t.unrealized += p.unrealized;
+      t.value += p.valueAll; t.capital += p.capital; t.unrealized += p.unrealized;
       t.realized += p.realized; t.fees += p.fees;
     });
     return t;
@@ -132,6 +133,7 @@
     title: 'Portefeuille', value: 'Valeur de marché', capital: 'Capital investi', unrealized: 'P/L latent',
     realized: 'P/L réalisé', fees: 'Frais payés', unknown: 'coût inconnu', cookies: 'cookies',
     cols: ['Marchandise', 'Qté', 'PRU', 'Cours', '% repos', 'Valeur', 'P/L latent', 'P/L réalisé'],
+    unknownBadge: 'dont %1 au coût inconnu', unknownPl: 'hors coût inconnu',
     lotCols: 'heure · qté × prix (+ frais) · latent',
     rateNote: 'Cookies convertis au taux actuel (1 $ = 1 s de production brute max).',
   };
@@ -168,15 +170,17 @@
     h += '<div class="sdo-head">' + TEXT.cols.map(function (c) { return '<span>' + c + '</span>'; }).join('') + '</div>';
     view.goods.forEach(function (g) {
       var p = g.position;
-      var qty = String(p.qtyKnown) + (p.qtyUnknown ? ' <span class="sdo-dim">+' + p.qtyUnknown + ' ' + TEXT.unknown + '</span>' : '') + ' / ' + g.max;
+      var held = p.qtyKnown + p.qtyUnknown;
+      var qty = held + ' / ' + g.max + (p.qtyUnknown ? '<span class="sdo-dim sdo-ck">' + TEXT.unknownBadge.replace('%1', p.qtyUnknown) + '</span>' : '');
       var pct = g.rest ? Math.round(g.val / g.rest * 100) + ' %' : '';
       var unrealPct = p.capital > 0 ? ' (' + (p.unrealized > 0 ? '+' : '') + Math.round(p.unrealized / p.capital * 100) + ' %)' : '';
       h += '<div class="sdo-row" data-id="' + g.id + '">' +
         '<span>' + esc(g.name) + '</span><span>' + qty + '</span>' +
         '<span>' + (p.qtyKnown ? esc(dollars(p.pru)) : '-') + '</span>' +
         '<span>' + esc(dollars(g.val)) + '</span><span>' + esc(pct) + '</span>' +
-        '<span>' + esc(dollars(p.value)) + '</span>' +
-        '<span class="' + plClass(p.unrealized) + '">' + money(p.unrealized, cps) + esc(unrealPct) + '</span>' +
+        '<span>' + esc(dollars(p.valueAll)) + '</span>' +
+        '<span class="' + plClass(p.unrealized) + '">' + money(p.unrealized, cps) + esc(unrealPct) +
+          (p.qtyUnknown ? '<span class="sdo-dim sdo-ck">' + TEXT.unknownPl + '</span>' : '') + '</span>' +
         '<span class="' + plClass(p.realized) + '">' + money(p.realized, cps) + '</span></div>';
       if (opened[g.id] && p.lots.length) {
         h += '<div class="sdo-lots"><div class="sdo-dim">' + TEXT.lotCols + '</div>' + p.lots.map(function (l) {
