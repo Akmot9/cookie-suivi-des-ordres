@@ -125,3 +125,16 @@ test('seed is saved and restored; clear empties everything', () => {
   assert.deepStrictEqual(M.ids(), []);
   assert.strictEqual(M.seed, null);
 });
+
+test('lots keep their initial quantity and expose a P/L percentage', () => {
+  const L = new Ledger();
+  L.buy(0, 10, 5, 1.2, 1);
+  L.sell(0, 4, 9, 2);
+  const lot = L.position(0, 9).lots[0];
+  assert.strictEqual(lot.initial, 10);
+  assert.strictEqual(lot.qty, 6);
+  assert.ok(Math.abs(lot.pnlPct - (9 / 6 - 1) * 100) < 1e-9);
+  const M = new Ledger();
+  M.load('{"v":1,"lots":{"0":[{"t":1,"qty":3,"unitPrice":2,"unitFee":0.4}]},"realized":{},"unknown":{}}');
+  assert.strictEqual(M.position(0, 2).lots[0].initial, 3, 'old saves default initial to qty');
+});

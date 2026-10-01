@@ -24,7 +24,7 @@
 
   Ledger.prototype.buy = function (id, qty, val, overhead, t) {
     if (!(qty > 0)) return;
-    this._lots(id).push({ t: t, qty: qty, unitPrice: val, unitFee: val * (overhead - 1) });
+    this._lots(id).push({ t: t, qty: qty, initial: qty, unitPrice: val, unitFee: val * (overhead - 1) });
   };
 
   // Consume quantities: unknown stock first, then lots FIFO. Returns what was consumed.
@@ -68,7 +68,12 @@
     var detail = lots.map(function (l) {
       qty += l.qty;
       capital += l.qty * (l.unitPrice + l.unitFee);
-      return { t: l.t, qty: l.qty, unitPrice: l.unitPrice, unitFee: l.unitFee, unrealized: l.qty * (val - l.unitPrice - l.unitFee) };
+      var unit = l.unitPrice + l.unitFee;
+      return {
+        t: l.t, qty: l.qty, initial: l.initial || l.qty, unitPrice: l.unitPrice, unitFee: l.unitFee,
+        invested: l.qty * unit, value: l.qty * val, unrealized: l.qty * (val - unit),
+        pnlPct: unit > 0 ? (val / unit - 1) * 100 : null,
+      };
     });
     var unknown = this.unknown[id] || 0;
     return {
@@ -114,6 +119,7 @@
       d.lots[k].forEach(function (l) {
         if (!l || typeof l !== 'object') return;
         var lot = { t: fin(l.t) || 0, qty: fin(l.qty), unitPrice: fin(l.unitPrice), unitFee: fin(l.unitFee) };
+        lot.initial = fin(l.initial) >= lot.qty ? fin(l.initial) : lot.qty;
         if (lot.qty > 0 && isFinite(lot.unitPrice) && isFinite(lot.unitFee)) lots.push(lot);
       });
       if (lots.length) self.lots[k] = lots;
@@ -133,8 +139,8 @@
     title: 'Portefeuille', value: 'Valeur de marché', capital: 'Capital investi', unrealized: 'P/L latent',
     realized: 'P/L réalisé', fees: 'Frais payés', unknown: 'coût inconnu', cookies: 'cookies',
     cols: ['Marchandise', 'Qté', 'PRU', 'Cours', '% repos', 'Valeur', 'P/L latent', 'P/L réalisé'],
-    unknownBadge: 'dont %1 au coût inconnu', unknownPl: 'hors coût inconnu',
-    lotCols: 'heure · qté × prix (+ frais) · latent',
+    unknownPl: 'hors coût inconnu', noHistory: 'sans historique', lot: 'lot', lots: 'lots',
+    lotCols: ['Heure', 'Qté', 'Prix', 'Frais', 'Investi', 'Valeur', 'P/L latent', 'Performance', 'Détention'],
     rateNote: 'Cookies convertis au taux actuel (1 $ = 1 s de production brute max).',
   };
 
@@ -158,7 +164,38 @@
     return [d.getHours(), d.getMinutes(), d.getSeconds()].map(function (x) { return (x < 10 ? '0' : '') + x; }).join(':');
   }
 
-  function render(view, opened) {
+  // Mirrors the "Suivi des ordres" desktop app: a position row with a strip of lot cells (heat by
+  // performance), a chevron that expands the lots, a diverging bar for the percentage.
+  function heatClass(pct) {
+    if (pct === null || pct === undefined || !isFinite(pct)) return 'na';
+    var side = pct >= 0 ? 'gain' : 'loss', a = Math.abs(pct);
+    return side + '-' + (a >= 25 ? '3' : a >= 10 ? '2' : '1');
+  }
+  function pctText(pct) {
+    if (pct === null || pct === undefined || !isFinite(pct)) return '-';
+    return (pct > 0 ? '+' : '') + Math.round(pct) + ' %';
+  }
+  function divbar(pct) {
+    var v = pct === null || pct === undefined || !isFinite(pct) ? 0 : pct;
+    var w = Math.min(Math.abs(v), 60) / 0.6;
+    return '<span class="sdo-divbar"><span class="sdo-divhalf">' + (v < 0 ? '<span class="sdo-divfill loss" style="width:' + w + '%"></span>' : '') +
+      '</span><span class="sdo-divhalf">' + (v > 0 ? '<span class="sdo-divfill gain" style="width:' + w + '%"></span>' : '') + '</span></span>';
+  }
+  function holding(sec) {
+    if (!(sec >= 0)) return '-';
+    var m = Math.floor(sec / 60);
+    if (m < 1) return '< 1 min';
+    if (m < 60) return m + ' min';
+    var h = Math.floor(m / 60), r = m % 60;
+    if (h < 24) return h + ' h ' + (r < 10 ? '0' : '') + r;
+    var d = Math.floor(h / 24);
+    return d + ' j ' + (h % 24) + ' h';
+  }
+  function lotTitle(l) {
+    return hhmmss(l.t) + ' · ' + l.qty + ' × ' + dollars(l.unitPrice + l.unitFee) + ' · ' + pctText(l.pnlPct);
+  }
+
+  function render(view, opened, now) {
     var T = view.totals, cps = view.cps;
     var h = '<div class="sdo-title">' + TEXT.title + '</div><div class="sdo-summary">' +
       '<span>' + TEXT.value + ' : <b>' + plain(T.value, cps) + '</b></span>' +
@@ -169,24 +206,47 @@
       '<div class="sdo-dim sdo-note">' + TEXT.rateNote + '</div>';
     h += '<div class="sdo-head">' + TEXT.cols.map(function (c) { return '<span>' + c + '</span>'; }).join('') + '</div>';
     view.goods.forEach(function (g) {
-      var p = g.position;
+      var p = g.position, isOpen = !!opened[g.id];
       var held = p.qtyKnown + p.qtyUnknown;
-      var qty = held + ' / ' + g.max + (p.qtyUnknown ? '<span class="sdo-dim sdo-ck">' + TEXT.unknownBadge.replace('%1', p.qtyUnknown) + '</span>' : '');
       var pct = g.rest ? Math.round(g.val / g.rest * 100) + ' %' : '';
-      var unrealPct = p.capital > 0 ? ' (' + (p.unrealized > 0 ? '+' : '') + Math.round(p.unrealized / p.capital * 100) + ' %)' : '';
-      h += '<div class="sdo-row" data-id="' + g.id + '">' +
-        '<span>' + esc(g.name) + '</span><span>' + qty + '</span>' +
+      var strip = p.lots.map(function (l) {
+        return '<span class="sdo-cell ' + heatClass(l.pnlPct) + '" title="' + esc(lotTitle(l)) + '"></span>';
+      }).join('') + (p.qtyUnknown ? '<span class="sdo-cell na" title="' + esc(p.qtyUnknown + ' ' + TEXT.noHistory) + '"></span>' : '');
+      var nLots = p.lots.length + (p.qtyUnknown ? 1 : 0);
+      var badge = p.qtyUnknown ? '<span class="sdo-badge">' + p.qtyUnknown + ' ' + TEXT.noHistory + '</span>' : '';
+      var unrealPct = p.capital > 0 ? (p.unrealized / p.capital) * 100 : null;
+      h += '<div class="sdo-row' + (isOpen ? ' open' : '') + '">' +
+        '<button class="sdo-head-btn" data-id="' + g.id + '" type="button">' +
+          '<span class="sdo-chevron"></span>' +
+          '<span class="sdo-name"><b>' + esc(g.name) + '</b> <span class="sdo-dim">' + esc(g.symbol || '') + '</span>' + badge +
+            '<span class="sdo-strip" title="' + nLots + ' ' + (nLots > 1 ? TEXT.lots : TEXT.lot) + '">' + strip + '</span></span>' +
+        '</button>' +
+        '<span>' + held + ' / ' + g.max + '</span>' +
         '<span>' + (p.qtyKnown ? esc(dollars(p.pru)) : '-') + '</span>' +
         '<span>' + esc(dollars(g.val)) + '</span><span>' + esc(pct) + '</span>' +
         '<span>' + esc(dollars(p.valueAll)) + '</span>' +
-        '<span class="' + plClass(p.unrealized) + '">' + money(p.unrealized, cps) + esc(unrealPct) +
+        '<span class="' + plClass(p.unrealized) + '">' + money(p.unrealized, cps) + divbar(unrealPct) + ' ' + esc(pctText(unrealPct)) +
           (p.qtyUnknown ? '<span class="sdo-dim sdo-ck">' + TEXT.unknownPl + '</span>' : '') + '</span>' +
         '<span class="' + plClass(p.realized) + '">' + money(p.realized, cps) + '</span></div>';
-      if (opened[g.id] && p.lots.length) {
-        h += '<div class="sdo-lots"><div class="sdo-dim">' + TEXT.lotCols + '</div>' + p.lots.map(function (l) {
-          return '<div>' + hhmmss(l.t) + ' · ' + l.qty + ' × ' + esc(dollars(l.unitPrice)) + ' (+' + esc(dollars(l.unitFee)) + ')' +
-            ' · <span class="' + plClass(l.unrealized) + '">' + esc(signed(l.unrealized)) + '</span></div>';
-        }).join('') + '</div>';
+      if (isOpen && (p.lots.length || p.qtyUnknown)) {
+        h += '<div class="sdo-lots"><div class="sdo-lot sdo-dim">' + TEXT.lotCols.map(function (c) { return '<span>' + c + '</span>'; }).join('') + '</div>';
+        p.lots.slice().sort(function (a, b) { return a.t - b.t; }).forEach(function (l) {
+          h += '<div class="sdo-lot">' +
+            '<span>' + hhmmss(l.t) + '</span>' +
+            '<span>' + l.qty + (l.initial !== l.qty ? ' <span class="sdo-dim">/ ' + l.initial + '</span>' : '') + '</span>' +
+            '<span>' + esc(dollars(l.unitPrice)) + '</span>' +
+            '<span class="sdo-dim">' + esc(dollars(l.unitFee)) + '</span>' +
+            '<span>' + esc(dollars(l.invested)) + '</span>' +
+            '<span>' + esc(dollars(l.value)) + '</span>' +
+            '<span class="' + plClass(l.unrealized) + '">' + esc(signed(l.unrealized)) + '</span>' +
+            '<span>' + divbar(l.pnlPct) + ' <span class="' + plClass(l.unrealized) + '">' + esc(pctText(l.pnlPct)) + '</span></span>' +
+            '<span class="sdo-dim">' + holding(now - l.t) + '</span></div>';
+        });
+        if (p.qtyUnknown) {
+          h += '<div class="sdo-lot sdo-dim"><span>-</span><span>' + p.qtyUnknown + '</span><span>-</span><span>-</span><span>-</span>' +
+            '<span>' + esc(dollars(p.qtyUnknown * g.val)) + '</span><span>-</span><span>' + TEXT.noHistory + '</span><span>-</span></div>';
+        }
+        h += '</div>';
       }
     });
     return h;
@@ -207,8 +267,24 @@
     '#sdoPanel .sdo-head,#sdoPanel .sdo-row{display:grid !important;grid-template-columns:1.3fr 1.2fr 0.8fr 0.8fr 0.6fr 0.9fr 1.6fr 1.6fr;gap:4px;padding:2px 0}' +
     '#sdoPanel .sdo-head{opacity:0.6;border-bottom:1px solid #555}' +
     '#sdoPanel .sdo-row{cursor:pointer}#sdoPanel .sdo-row:hover{background:rgba(255,255,255,0.08)}' +
-    '#sdoPanel .sdo-lots{padding:2px 0 4px 16px;opacity:0.9}' +
-    '#sdoPanel .sdo-dim{opacity:0.6}#sdoPanel .sdo-pos{color:#6bff8f !important}#sdoPanel .sdo-neg{color:#ff6b6b !important}' +
+    '#sdoPanel .sdo-lots{padding:2px 0 6px 18px;background:rgba(0,0,0,0.25)}' +
+    '#sdoPanel .sdo-lot{display:grid !important;grid-template-columns:0.8fr 0.8fr 0.8fr 0.7fr 0.9fr 0.9fr 1fr 1.2fr 0.8fr;gap:4px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.08)}' +
+    '#sdoPanel .sdo-head-btn{all:unset;cursor:pointer;display:flex !important;align-items:center;gap:6px;color:inherit;font:inherit}' +
+    // CSS triangle: the game cannot render U+25B8-style glyphs
+    '#sdoPanel .sdo-chevron{display:inline-block;width:0;height:0;border-left:6px solid #ccc;border-top:4px solid transparent;border-bottom:4px solid transparent;margin-right:2px;transition:transform 0.15s}' +
+    '#sdoPanel .sdo-row.open .sdo-chevron{transform:rotate(90deg);border-left-color:#fff}' +
+    '#sdoPanel .sdo-name{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px}' +
+    '#sdoPanel .sdo-badge{font-size:10px;padding:0 4px;border:1px solid rgba(255,230,120,0.6);border-radius:3px;color:#ffe678}' +
+    '#sdoPanel .sdo-strip{display:inline-flex;gap:3px;flex-wrap:wrap;margin-left:4px}' +
+    '#sdoPanel .sdo-cell{display:inline-block;width:11px;height:11px;border-radius:2px;background:#444}' +
+    '#sdoPanel .sdo-cell.na{background:repeating-linear-gradient(45deg,#555 0 2px,#222 2px 4px)}' +
+    '#sdoPanel .sdo-cell.gain-1{background:#2a6a52}#sdoPanel .sdo-cell.gain-2{background:#3aa578}#sdoPanel .sdo-cell.gain-3{background:#4bd399}' +
+    '#sdoPanel .sdo-cell.loss-1{background:#6a2f36}#sdoPanel .sdo-cell.loss-2{background:#b0474f}#sdoPanel .sdo-cell.loss-3{background:#ff6670}' +
+    '#sdoPanel .sdo-divbar{display:inline-flex;width:60px;height:6px;vertical-align:middle;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden}' +
+    '#sdoPanel .sdo-divhalf{position:relative;flex:1}' +
+    '#sdoPanel .sdo-divhalf:first-child .sdo-divfill{position:absolute;right:0}#sdoPanel .sdo-divhalf:last-child .sdo-divfill{position:absolute;left:0}' +
+    '#sdoPanel .sdo-divfill{display:block;height:100%}#sdoPanel .sdo-divfill.gain{background:#4bd399}#sdoPanel .sdo-divfill.loss{background:#ff6670}' +
+    '#sdoPanel .sdo-dim{opacity:0.6}#sdoPanel .sdo-pos{color:#4bd399 !important}#sdoPanel .sdo-neg{color:#ff6670 !important}' +
     '#sdoPanel .sdo-ck{display:block !important;font-size:10px !important}#sdoPanel .sdo-note{font-size:10px !important;margin:2px 0 4px}';
 
   function install(game, doc, ledger) {
@@ -279,17 +355,21 @@
           refresh();
         });
       });
-      panel.addEventListener('click', function (e) {
-        safe(function () {
-          var t = e && e.target;
-          while (t && t !== panel && !(t.getAttribute && t.getAttribute('data-id'))) t = t.parentNode;
-          if (!t || t === panel) return;
-          var id = t.getAttribute('data-id');
-          opened[id] = !opened[id];
-          lastHtml = null;
-          refresh();
-        });
-      });
+    }
+
+    function clickRow(id) {
+      opened[id] = !opened[id];
+      lastHtml = null;
+      refresh();
+    }
+    function wireRows() {
+      if (!content || !content.querySelectorAll) return;
+      var btns = content.querySelectorAll('.sdo-head-btn');
+      for (var i = 0; i < btns.length; i++) {
+        (function (b) {
+          b.addEventListener('click', function () { safe(function () { clickRow(b.getAttribute('data-id')); }); });
+        })(btns[i]);
+      }
     }
 
     function goodName(g) { return String(g.name).replace('%1', game.bakeryName || ''); }
@@ -313,8 +393,8 @@
     function refresh() {
       var M = marketOf();
       if (!panel || !M || panel.style.display === 'none') return;
-      var html = render(buildView(M), opened);
-      if (html !== lastHtml) { content.innerHTML = html; lastHtml = html; }
+      var html = render(buildView(M), opened, now());
+      if (html !== lastHtml) { content.innerHTML = html; lastHtml = html; wireRows(); }
     }
 
     function tick() {
@@ -330,7 +410,7 @@
       });
     }
 
-    return { tick: tick, refresh: refresh, disabled: function () { return disabled; } };
+    return { tick: tick, refresh: refresh, clickRow: clickRow, disabled: function () { return disabled; } };
   }
 
   if (typeof Game !== 'undefined' && Game.registerMod) {

@@ -7,6 +7,10 @@ function fakeDoc() {
   function el(tag, id) {
     const e = { tagName: tag, id: id || '', className: '', style: {}, children: [], innerHTML: '', listeners: {},
       appendChild(c) { this.children.push(c); if (c.id) byId[c.id] = c; return c; },
+      querySelectorAll(sel) { // the panel's content is a string: emulate the row buttons found in it
+        if (sel !== '.sdo-head-btn') return [];
+        return [...String(this.innerHTML).matchAll(/data-id="(\d+)"/g)].map(m => ({ getAttribute: () => m[1], addEventListener(t, f) { this['on' + t] = f; } }));
+      },
       querySelector(sel) { return sel === '.productButtons' ? this.children.find(c => c.className === 'productButtons') || null : null; },
       addEventListener(t, f) { this.listeners[t] = f; },
       click() { this.listeners.click && this.listeners.click({ target: this }); },
@@ -221,4 +225,23 @@ test('styles live inside the panel and critical rules are !important (game CSS o
   assert.match(panel.style.cssText, /position:relative;z-index:300/, 'panel is its own stacking context');
   doc.getElementById('sdoButton').click();
   assert.ok(panel.children.find(c => c.tagName === 'style'), 'style survives a refresh');
+});
+
+test('clicking a row button toggles its lots', () => {
+  const { doc } = fakeDoc();
+  const G = fakeGame();
+  const M = G.Objects.Bank.minigame;
+  const rec = install(G, doc, new Ledger());
+  rec.tick();
+  M.buyGood(0, 10);
+  doc.getElementById('sdoButton').click();
+  const content = doc.getElementById('sdoContent');
+  assert.doesNotMatch(content.innerHTML, /sdo-lots/);
+  // the mod wires every .sdo-head-btn after each render; find the one for good 0 and click it
+  const btn = content.querySelectorAll('.sdo-head-btn').find(b => b.getAttribute() === '0');
+  content.__buttons0 = btn;
+  rec.clickRow('0');
+  assert.match(content.innerHTML, /sdo-lots/);
+  rec.clickRow('0');
+  assert.doesNotMatch(content.innerHTML, /sdo-lots/);
 });
