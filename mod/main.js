@@ -3,10 +3,19 @@
   'use strict';
 
   function Ledger() {
+    this.seed = null;    // Game.seed of the run this ledger belongs to
+    this.clear();
+  }
+
+  Ledger.prototype.clear = function () {
+    this.seed = null;
     this.lots = {};      // id -> [{ t, qty, unitPrice, unitFee }]
     this.realized = {};  // id -> { proceeds, cost, fees }
     this.unknown = {};   // id -> qty of unknown cost
-  }
+  };
+
+  function isId(k) { return /^\d+$/.test(k); }
+  function fin(x) { var n = +x; return isFinite(n) ? n : NaN; }
 
   Ledger.prototype._lots = function (id) { return this.lots[id] || (this.lots[id] = []); };
   Ledger.prototype._real = function (id) {
@@ -87,23 +96,36 @@
   };
 
   Ledger.prototype.save = function () {
-    return JSON.stringify({ v: 1, lots: this.lots, realized: this.realized, unknown: this.unknown });
+    return JSON.stringify({ v: 1, seed: this.seed, lots: this.lots, realized: this.realized, unknown: this.unknown });
   };
 
   Ledger.prototype.load = function (str) {
-    this.lots = {}; this.realized = {}; this.unknown = {};
+    this.clear();
     var d;
     try { d = JSON.parse(str); } catch (e) { return; }
     if (!d || typeof d !== 'object') return;
     var self = this;
+    this.seed = typeof d.seed === 'string' ? d.seed : null;
+    // Only numeric ids and finite numbers get in: a bad lot must not poison the panel or the prototype chain
     Object.keys(d.lots || {}).forEach(function (k) {
-      if (Array.isArray(d.lots[k])) self.lots[k] = d.lots[k].filter(function (l) { return l && l.qty > 0; });
+      if (!isId(k) || !Array.isArray(d.lots[k])) return;
+      var lots = [];
+      d.lots[k].forEach(function (l) {
+        if (!l || typeof l !== 'object') return;
+        var lot = { t: fin(l.t) || 0, qty: fin(l.qty), unitPrice: fin(l.unitPrice), unitFee: fin(l.unitFee) };
+        if (lot.qty > 0 && isFinite(lot.unitPrice) && isFinite(lot.unitFee)) lots.push(lot);
+      });
+      if (lots.length) self.lots[k] = lots;
     });
     Object.keys(d.realized || {}).forEach(function (k) {
-      var r = d.realized[k] || {};
-      self.realized[k] = { proceeds: +r.proceeds || 0, cost: +r.cost || 0, fees: +r.fees || 0 };
+      var r = d.realized[k];
+      if (!isId(k) || !r || typeof r !== 'object') return;
+      self.realized[k] = { proceeds: fin(r.proceeds) || 0, cost: fin(r.cost) || 0, fees: fin(r.fees) || 0 };
     });
-    Object.keys(d.unknown || {}).forEach(function (k) { if (d.unknown[k] > 0) self.unknown[k] = +d.unknown[k]; });
+    Object.keys(d.unknown || {}).forEach(function (k) {
+      var q = fin(d.unknown[k]);
+      if (isId(k) && q > 0) self.unknown[k] = q;
+    });
   };
 
   var TEXT = {
@@ -111,6 +133,7 @@
     realized: 'P/L réalisé', fees: 'Frais payés', unknown: 'coût inconnu', cookies: 'cookies',
     cols: ['Marchandise', 'Qté', 'PRU', 'Cours', '% repos', 'Valeur', 'P/L latent', 'P/L réalisé'],
     lotCols: 'heure · qté × prix (+ frais) · latent',
+    rateNote: 'Cookies convertis au taux actuel (1 $ = 1 s de production brute max).',
   };
 
   function esc(s) {
@@ -126,7 +149,8 @@
   function dollars(n) { return n.toFixed(2).replace('.', ',') + ' $'; }
   function signed(n) { return (n > 0 ? '+' : '') + dollars(n); }
   function plClass(n) { return n > 0 ? ' sdo-pos' : n < 0 ? ' sdo-neg' : ''; }
-  function money(n, cps) { return esc(signed(n)) + ' <span class="sdo-dim">(' + esc(shortNum(n * cps)) + ' ' + TEXT.cookies + ')</span>'; }
+  function money(n, cps) { return esc(signed(n)) + '<span class="sdo-dim sdo-ck">(' + esc(shortNum(n * cps)) + ' ' + TEXT.cookies + ')</span>'; }
+  function plain(n, cps) { return esc(dollars(n)) + '<span class="sdo-dim sdo-ck">(' + esc(shortNum(n * cps)) + ' ' + TEXT.cookies + ')</span>'; }
   function hhmmss(t) {
     var d = new Date(t * 1000);
     return [d.getHours(), d.getMinutes(), d.getSeconds()].map(function (x) { return (x < 10 ? '0' : '') + x; }).join(':');
@@ -135,11 +159,12 @@
   function render(view, opened) {
     var T = view.totals, cps = view.cps;
     var h = '<div class="sdo-title">' + TEXT.title + '</div><div class="sdo-summary">' +
-      '<span>' + TEXT.value + ' : <b>' + esc(dollars(T.value)) + '</b></span>' +
-      '<span>' + TEXT.capital + ' : <b>' + esc(dollars(T.capital)) + '</b></span>' +
+      '<span>' + TEXT.value + ' : <b>' + plain(T.value, cps) + '</b></span>' +
+      '<span>' + TEXT.capital + ' : <b>' + plain(T.capital, cps) + '</b></span>' +
       '<span class="' + plClass(T.unrealized) + '">' + TEXT.unrealized + ' : <b>' + money(T.unrealized, cps) + '</b></span>' +
       '<span class="' + plClass(T.realized) + '">' + TEXT.realized + ' : <b>' + money(T.realized, cps) + '</b></span>' +
-      '<span>' + TEXT.fees + ' : <b>' + esc(dollars(T.fees)) + '</b></span></div>';
+      '<span>' + TEXT.fees + ' : <b>' + plain(T.fees, cps) + '</b></span></div>' +
+      '<div class="sdo-dim sdo-note">' + TEXT.rateNote + '</div>';
     h += '<div class="sdo-head">' + TEXT.cols.map(function (c) { return '<span>' + c + '</span>'; }).join('') + '</div>';
     view.goods.forEach(function (g) {
       var p = g.position;
@@ -173,7 +198,8 @@
     '#sdoPanel .sdo-head{opacity:0.6;border-bottom:1px solid #555}' +
     '#sdoPanel .sdo-row{cursor:pointer}#sdoPanel .sdo-row:hover{background:rgba(255,255,255,0.08)}' +
     '#sdoPanel .sdo-lots{padding:2px 0 4px 16px;opacity:0.9}' +
-    '#sdoPanel .sdo-dim{opacity:0.6}#sdoPanel .sdo-pos{color:#6bff8f}#sdoPanel .sdo-neg{color:#ff6b6b}';
+    '#sdoPanel .sdo-dim{opacity:0.6}#sdoPanel .sdo-pos{color:#6bff8f}#sdoPanel .sdo-neg{color:#ff6b6b}' +
+    '#sdoPanel .sdo-ck{display:block;font-size:10px}#sdoPanel .sdo-note{font-size:10px;margin:2px 0 4px}';
 
   function install(game, doc, ledger) {
     var disabled = false, opened = {}, panel = null, lastHtml = null;
@@ -252,15 +278,20 @@
       });
     }
 
+    function goodName(g) { return String(g.name).replace('%1', game.bakeryName || ''); }
     function buildView(M) {
-      var goods = M.goodsById.filter(function (g) { return g.active && !g.hidden; });
+      // Every good is priced, hidden or not: a hidden good still has a value. Rows: active goods plus any good still held.
       var prices = {};
-      goods.forEach(function (g) { prices[g.id] = g.val; });
+      M.goodsById.forEach(function (g) { prices[g.id] = g.val; });
+      var goods = M.goodsById.filter(function (g) {
+        var p = ledger.position(g.id, g.val);
+        return (g.active && !g.hidden) || p.qtyKnown > 0 || p.qtyUnknown > 0;
+      });
       return {
         cps: game.cookiesPsRawHighest || 0,
         totals: ledger.totals(prices),
         goods: goods.map(function (g) {
-          return { id: g.id, name: g.name, val: g.val, rest: M.getRestingVal(g.id), max: M.getGoodMaxStock(g), position: ledger.position(g.id, g.val) };
+          return { id: g.id, name: goodName(g), val: g.val, rest: M.getRestingVal(g.id), max: M.getGoodMaxStock(g), position: ledger.position(g.id, g.val) };
         }),
       };
     }
@@ -278,7 +309,9 @@
         if (!M) return;
         wrapMarket(M);
         mount();
-        M.goodsById.forEach(function (g) { if (g.active && !g.hidden) ledger.reconcile(g.id, g.stock); });
+        // The ledger belongs to one run: a new seed (ascension, hard reset, another save) starts a fresh one
+        if (ledger.seed !== game.seed) { ledger.clear(); ledger.seed = game.seed; lastHtml = null; }
+        M.goodsById.forEach(function (g) { ledger.reconcile(g.id, g.stock); }); // the game's stock is the truth, active or not
         refresh();
       });
     }
@@ -294,6 +327,7 @@
         try {
           var rec = install(Game, typeof document !== 'undefined' ? document : null, ledger);
           Game.registerHook('logic', function () { if (Game.T % Game.fps === 0) rec.tick(); });
+          Game.registerHook('reset', function () { ledger.clear(); }); // ascension or hard reset: the market is wiped too
         } catch (e) { console.error('[' + MOD_ID + ']', e); }
       },
       save: function () { try { return ledger.save(); } catch (e) { return ''; } },

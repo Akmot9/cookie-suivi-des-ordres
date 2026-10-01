@@ -19,7 +19,7 @@ function fakeDoc() {
   return { doc, row, buttons };
 }
 function fakeGame(withMarket = true) {
-  const G = { cookiesPsRawHighest: 1e8, Objects: { Bank: {} } };
+  const G = { cookiesPsRawHighest: 1e8, seed: 'abc', bakeryName: 'Boulangerie', Objects: { Bank: {} } };
   if (withMarket) G.Objects.Bank.minigame = market();
   return G;
 }
@@ -121,4 +121,88 @@ test('no document or no row is a no-op; mod error disables only itself', () => {
   let rec;
   try { rec = install(fakeGame(), doc, L); rec.tick(); } finally { console.error = origErr; }
   assert.strictEqual(rec.disabled(), true);
+});
+
+test('hidden and inactive goods are still reconciled and valued; rows shown for held goods', () => {
+  const { doc } = fakeDoc();
+  const L = new Ledger();
+  const G = fakeGame();
+  const M = G.Objects.Bank.minigame;
+  const rec = install(G, doc, L);
+  rec.tick();
+  M.buyGood(0, 10);                    // 10 at 5 → capital 60
+  M.goodsById[0].hidden = true;        // player hides the good
+  M.goodsById[2].stock = 4;            // inactive good gets stock (e.g. bought while mod off)
+  rec.tick();
+  doc.getElementById('sdoButton').click();
+  const html = doc.getElementById('sdoPanel').innerHTML;
+  assert.match(html, /Céréales/);
+  assert.match(html, /Beurre/);
+  assert.strictEqual(L.position(2, 20).qtyUnknown, 4);
+  const t = L.totals({ 0: 5, 2: 20 });
+  assert.ok(Math.abs(t.unrealized - (50 - 60)) < 1e-9, 'hidden good valued at its price, not 0');
+});
+
+test('a market reset (all goods inactive, stock 0) leaves no capital or P/L on screen', () => {
+  const { doc } = fakeDoc();
+  const L = new Ledger();
+  const G = fakeGame();
+  const M = G.Objects.Bank.minigame;
+  const rec = install(G, doc, L);
+  rec.tick();
+  M.buyGood(0, 10);
+  M.goodsById.forEach(g => { g.stock = 0; g.active = false; g.hidden = true; });
+  rec.tick();
+  assert.strictEqual(L.position(0, 5).qtyKnown, 0);
+  assert.strictEqual(L.totals({ 0: 5 }).capital, 0);
+});
+
+test('a different game seed clears the ledger (save loaded without mod data)', () => {
+  const { doc } = fakeDoc();
+  const L = new Ledger();
+  L.seed = 'old';
+  L.buy(0, 10, 5, 1.2, 1);
+  L.sell(0, 5, 9, 2);
+  const G = fakeGame();
+  G.Objects.Bank.minigame.goodsById[0].stock = 5;
+  const rec = install(G, doc, L);
+  rec.tick();
+  assert.strictEqual(L.seed, 'abc');
+  assert.strictEqual(L.position(0, 5).realized, 0);
+  assert.strictEqual(L.position(0, 5).qtyUnknown, 5, 'stock of the new game is unknown cost');
+});
+
+test('good named %1 shows the bakery name', () => {
+  const { doc } = fakeDoc();
+  const G = fakeGame();
+  G.bakeryName = 'Cyprien';
+  G.Objects.Bank.minigame.goodsById[0].name = '%1';
+  const rec = install(G, doc, new Ledger());
+  rec.tick();
+  doc.getElementById('sdoButton').click();
+  assert.match(doc.getElementById('sdoPanel').innerHTML, /Cyprien/);
+});
+
+test('game registration: reset hook clears the ledger, save/load round-trip', () => {
+  const hooks = {};
+  let mod;
+  global.Game = {
+    fps: 30, T: 0, seed: 'abc', Objects: {},
+    registerMod(id, m) { mod = m; },
+    registerHook(name, fn) { hooks[name] = fn; },
+  };
+  try {
+    delete require.cache[require.resolve('../mod/main.js')];
+    require('../mod/main.js');
+    assert.doesNotThrow(() => mod.init());
+    mod.ledger.buy(0, 1, 1, 1.2, 1);
+    assert.match(mod.save(), /"unitPrice":1/);
+    hooks.reset(0);
+    assert.deepStrictEqual(mod.ledger.ids(), []);
+    mod.load('{"v":1,"seed":"abc","lots":{"1":[{"t":1,"qty":2,"unitPrice":3,"unitFee":0.6}]},"realized":{},"unknown":{}}');
+    assert.strictEqual(mod.ledger.position(1, 3).qtyKnown, 2);
+  } finally {
+    delete global.Game;
+    delete require.cache[require.resolve('../mod/main.js')];
+  }
 });

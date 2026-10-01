@@ -101,3 +101,27 @@ test('selling more than owned is clamped', () => {
   assert.deepStrictEqual(L.sell(0, 10, 9, 2), { known: 3, unknown: 0 });
   assert.strictEqual(L.position(0, 9).qtyKnown, 0);
 });
+
+test('load drops malformed lots, non-numeric keys and prototype keys', () => {
+  const L = new Ledger();
+  L.load(JSON.stringify({ v: 1, lots: { 0: [{ qty: 5 }, { qty: '5', unitPrice: 1, unitFee: 0.2 }, { t: 1, qty: 2, unitPrice: 3, unitFee: 0.6 }], '__proto__': [{ qty: 1, unitPrice: 1, unitFee: 0 }], abc: [{ qty: 1, unitPrice: 1, unitFee: 0 }] },
+    realized: { 0: { proceeds: 'x', cost: 1, fees: 1 } }, unknown: { 0: '3', 1: -2 } }));
+  assert.deepStrictEqual(L.ids().sort(), [0]);
+  const p = L.position(0, 4);
+  assert.strictEqual(p.qtyKnown, 7, 'numeric strings are converted, the price-less lot is dropped');
+  assert.strictEqual(p.qtyUnknown, 3);
+  assert.ok(Number.isFinite(p.capital) && Number.isFinite(p.realized));
+  assert.strictEqual(Object.getPrototypeOf(L.lots), Object.prototype);
+});
+
+test('seed is saved and restored; clear empties everything', () => {
+  const L = new Ledger();
+  L.seed = 'abc';
+  L.buy(0, 1, 1, 1.2, 1);
+  const M = new Ledger();
+  M.load(L.save());
+  assert.strictEqual(M.seed, 'abc');
+  M.clear();
+  assert.deepStrictEqual(M.ids(), []);
+  assert.strictEqual(M.seed, null);
+});

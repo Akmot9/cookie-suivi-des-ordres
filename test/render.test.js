@@ -53,3 +53,9 @@ test('escapes html and uses only latin-1 text', () => {
   assert.match(html, /&lt;b&gt;x/);
   assert.deepStrictEqual([...html].filter(ch => ch.codePointAt(0) > 0xff), []);
 });
+
+test('every summary amount is shown in $ and in cookies', () => {
+  const html = render(view(), {});
+  const summary = html.slice(html.indexOf('sdo-summary'), html.indexOf('sdo-head'));
+  assert.strictEqual((summary.match(/cookies\)/g) || []).length, 5);
+});
