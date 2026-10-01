@@ -1,0 +1,11 @@
+{
+	"Name": "Suivi des ordres",
+	"ID": "suivi des ordres",
+	"Author": "Akmot9",
+	"Description": "Portefeuille de la Bourse : un lot par achat, ventes FIFO, frais au prorata, P/L latent et réalisé.",
+	"ModVersion": 1,
+	"GameVersion": 2.053,
+	"Date": "01/10/2026",
+	"Dependencies": [],
+	"AllowSteamAchievs": 1
+}
