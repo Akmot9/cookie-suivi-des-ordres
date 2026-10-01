@@ -190,19 +190,24 @@
 
   var MOD_ID = 'suivi des ordres';
   var BANK_ROW = 'row5';
+  // The game's own stylesheet styles everything inside the building rows, so the panel carries
+  // its <style> inside itself (like CGHR) and marks the rules that matter as !important.
+  var PANEL_STYLE = 'background:rgba(0,0,0,0.6);color:#eee;font:11px sans-serif;padding:6px 8px;margin:4px 0;text-align:left;';
   var PANEL_CSS =
-    '#sdoPanel{background:rgba(0,0,0,0.6);color:#eee;font:11px sans-serif;padding:6px 8px;margin:4px 0}' +
-    '#sdoPanel .sdo-title{font-weight:bold;font-size:13px;margin-bottom:4px}' +
-    '#sdoPanel .sdo-summary span{display:inline-block;margin-right:14px}' +
-    '#sdoPanel .sdo-head,#sdoPanel .sdo-row{display:grid;grid-template-columns:1.3fr 1.2fr 0.8fr 0.8fr 0.6fr 0.9fr 1.6fr 1.6fr;gap:4px;padding:2px 0}' +
+    '#sdoPanel{color:#eee !important;font:11px sans-serif !important;text-shadow:none !important}' +
+    '#sdoPanel *{color:inherit;text-shadow:none !important;font-size:inherit;line-height:1.4}' +
+    '#sdoPanel b{font-weight:bold !important}' +
+    '#sdoPanel .sdo-title{font-weight:bold !important;font-size:13px !important;margin-bottom:4px}' +
+    '#sdoPanel .sdo-summary span{display:inline-block !important;margin-right:14px;vertical-align:top}' +
+    '#sdoPanel .sdo-head,#sdoPanel .sdo-row{display:grid !important;grid-template-columns:1.3fr 1.2fr 0.8fr 0.8fr 0.6fr 0.9fr 1.6fr 1.6fr;gap:4px;padding:2px 0}' +
     '#sdoPanel .sdo-head{opacity:0.6;border-bottom:1px solid #555}' +
     '#sdoPanel .sdo-row{cursor:pointer}#sdoPanel .sdo-row:hover{background:rgba(255,255,255,0.08)}' +
     '#sdoPanel .sdo-lots{padding:2px 0 4px 16px;opacity:0.9}' +
-    '#sdoPanel .sdo-dim{opacity:0.6}#sdoPanel .sdo-pos{color:#6bff8f}#sdoPanel .sdo-neg{color:#ff6b6b}' +
-    '#sdoPanel .sdo-ck{display:block;font-size:10px}#sdoPanel .sdo-note{font-size:10px;margin:2px 0 4px}';
+    '#sdoPanel .sdo-dim{opacity:0.6}#sdoPanel .sdo-pos{color:#6bff8f !important}#sdoPanel .sdo-neg{color:#ff6b6b !important}' +
+    '#sdoPanel .sdo-ck{display:block !important;font-size:10px !important}#sdoPanel .sdo-note{font-size:10px !important;margin:2px 0 4px}';
 
   function install(game, doc, ledger) {
-    var disabled = false, opened = {}, panel = null, lastHtml = null;
+    var disabled = false, opened = {}, panel = null, content = null, lastHtml = null;
     function safe(fn) {
       if (disabled) return;
       try { fn(); } catch (e) { disabled = true; console.error('[' + MOD_ID + ']', e); }
@@ -246,9 +251,6 @@
       var row = doc.getElementById(BANK_ROW);
       var buttons = row && row.querySelector && row.querySelector('.productButtons');
       if (!row || !buttons) return;
-      var style = doc.createElement('style');
-      style.innerHTML = PANEL_CSS;
-      doc.head.appendChild(style);
       var btn = doc.createElement('div');
       btn.id = 'sdoButton';
       btn.className = 'productButton';
@@ -256,7 +258,14 @@
       buttons.appendChild(btn);
       panel = doc.createElement('div');
       panel.id = 'sdoPanel';
+      panel.style.cssText = PANEL_STYLE;
       panel.style.display = 'none';
+      var style = doc.createElement('style');
+      style.innerHTML = PANEL_CSS;
+      panel.appendChild(style);
+      content = doc.createElement('div');
+      content.id = 'sdoContent';
+      panel.appendChild(content);
       row.appendChild(panel);
       btn.addEventListener('click', function () {
         safe(function () {
@@ -300,7 +309,7 @@
       var M = marketOf();
       if (!panel || !M || panel.style.display === 'none') return;
       var html = render(buildView(M), opened);
-      if (html !== lastHtml) { panel.innerHTML = html; lastHtml = html; }
+      if (html !== lastHtml) { content.innerHTML = html; lastHtml = html; }
     }
 
     function tick() {

@@ -48,7 +48,7 @@ test('adds the button and hidden panel once; button toggles the panel', () => {
   assert.strictEqual(panel.style.display, 'none');
   doc.getElementById('sdoButton').click();
   assert.strictEqual(panel.style.display, 'block');
-  assert.match(panel.innerHTML, /Portefeuille/);
+  assert.match(doc.getElementById('sdoContent').innerHTML, /Portefeuille/);
   doc.getElementById('sdoButton').click();
   assert.strictEqual(panel.style.display, 'none');
 });
@@ -99,7 +99,7 @@ test('panel refreshes only when open and only when html changed', () => {
   const G = fakeGame();
   const rec = install(G, doc, new Ledger());
   rec.tick();
-  const panel = doc.getElementById('sdoPanel');
+  const panel = doc.getElementById('sdoContent');
   assert.strictEqual(panel.innerHTML, '');
   doc.getElementById('sdoButton').click();
   const first = panel.innerHTML;
@@ -135,7 +135,7 @@ test('hidden and inactive goods are still reconciled and valued; rows shown for 
   M.goodsById[2].stock = 4;            // inactive good gets stock (e.g. bought while mod off)
   rec.tick();
   doc.getElementById('sdoButton').click();
-  const html = doc.getElementById('sdoPanel').innerHTML;
+  const html = doc.getElementById('sdoContent').innerHTML;
   assert.match(html, /Céréales/);
   assert.match(html, /Beurre/);
   assert.strictEqual(L.position(2, 20).qtyUnknown, 4);
@@ -180,7 +180,7 @@ test('good named %1 shows the bakery name', () => {
   const rec = install(G, doc, new Ledger());
   rec.tick();
   doc.getElementById('sdoButton').click();
-  assert.match(doc.getElementById('sdoPanel').innerHTML, /Cyprien/);
+  assert.match(doc.getElementById('sdoContent').innerHTML, /Cyprien/);
 });
 
 test('game registration: reset hook clears the ledger, save/load round-trip', () => {
@@ -205,4 +205,19 @@ test('game registration: reset hook clears the ledger, save/load round-trip', ()
     delete global.Game;
     delete require.cache[require.resolve('../mod/main.js')];
   }
+});
+
+test('styles live inside the panel and critical rules are !important (game CSS overrides)', () => {
+  const { doc } = fakeDoc();
+  const rec = install(fakeGame(), doc, new Ledger());
+  rec.tick();
+  const panel = doc.getElementById('sdoPanel');
+  assert.strictEqual(doc.head.children.length, 0, 'no style in head');
+  const style = panel.children.find(c => c.tagName === 'style');
+  assert.ok(style, 'style element inside the panel');
+  assert.match(style.innerHTML, /#sdoPanel\{[^}]*color:#eee !important/);
+  assert.match(style.innerHTML, /\.sdo-row\{[^}]*display:grid !important/);
+  assert.match(panel.style.cssText, /background:rgba\(0,0,0,0\.6\)/);
+  doc.getElementById('sdoButton').click();
+  assert.ok(panel.children.find(c => c.tagName === 'style'), 'style survives a refresh');
 });
