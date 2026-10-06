@@ -135,14 +135,29 @@
     });
   };
 
-  var TEXT = {
-    title: 'Portefeuille', value: 'Valeur de marché', capital: 'Capital investi', unrealized: 'P/L latent',
-    realized: 'P/L réalisé', fees: 'Frais payés', unknown: 'coût inconnu', cookies: 'cookies',
-    cols: ['Marchandise', 'Qté', 'PRU', 'Cours', 'Écart repos', 'Valeur', 'P/L latent', 'P/L réalisé'],
-    unknownPl: 'hors coût inconnu', noHistory: 'sans historique', lot: 'lot', lots: 'lots',
-    lotCols: ['Heure', 'Qté', 'Prix', 'Frais', 'Investi', 'Valeur', 'P/L latent', 'Performance', 'Détention'],
-    rateNote: 'Cookies convertis au taux actuel (1 $ = 1 s de production brute max).',
+  // All visible text and number formats, by language. The game's locId picks one: French, else English.
+  var TEXTS = {
+    FR: {
+      title: 'Portefeuille', value: 'Valeur de marché', capital: 'Capital investi', unrealized: 'P/L latent',
+      realized: 'P/L réalisé', fees: 'Frais payés', unknown: 'coût inconnu', cookies: 'cookies',
+      cols: ['Marchandise', 'Qté', 'PRU', 'Cours', 'Écart repos', 'Valeur', 'P/L latent', 'P/L réalisé'],
+      unknownPl: 'hors coût inconnu', noHistory: 'sans historique', lot: 'lot', lots: 'lots',
+      lotCols: ['Heure', 'Qté', 'Prix', 'Frais', 'Investi', 'Valeur', 'P/L latent', 'Performance', 'Détention'],
+      rateNote: 'Cookies convertis au taux actuel (1 $ = 1 s de production brute max).',
+      colon: ' : ', dec: ',', pct: ' %', day: 'j', dollarsBefore: false,
+    },
+    EN: {
+      title: 'Portfolio', value: 'Market value', capital: 'Invested', unrealized: 'Unrealized P/L',
+      realized: 'Realized P/L', fees: 'Fees paid', unknown: 'unknown cost', cookies: 'cookies',
+      cols: ['Good', 'Qty', 'Avg cost', 'Price', 'vs resting', 'Value', 'Unrealized P/L', 'Realized P/L'],
+      unknownPl: 'excl. unknown cost', noHistory: 'without history', lot: 'lot', lots: 'lots',
+      lotCols: ['Time', 'Qty', 'Price', 'Fee', 'Invested', 'Value', 'Unrealized P/L', 'Performance', 'Held'],
+      rateNote: 'Cookies converted at the current rate ($1 = 1 s of highest raw CpS).',
+      colon: ': ', dec: '.', pct: '%', day: 'd', dollarsBefore: true,
+    },
   };
+  var TEXT = TEXTS.FR;
+  function setLang(id) { TEXT = id === 'FR' ? TEXTS.FR : TEXTS.EN; }
 
   function esc(s) {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -150,11 +165,14 @@
   function shortNum(n) {
     var units = [[1e18, 'Qi'], [1e15, 'Qa'], [1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'k']];
     for (var i = 0; i < units.length; i++) {
-      if (Math.abs(n) >= units[i][0]) return (n / units[i][0]).toFixed(1).replace('.', ',') + ' ' + units[i][1];
+      if (Math.abs(n) >= units[i][0]) return (n / units[i][0]).toFixed(1).replace('.', TEXT.dec) + ' ' + units[i][1];
     }
     return String(Math.round(n));
   }
-  function dollars(n) { return n.toFixed(2).replace('.', ',') + ' $'; }
+  function dollars(n) {
+    var a = Math.abs(n).toFixed(2).replace('.', TEXT.dec), neg = n < 0 && a !== (0).toFixed(2).replace('.', TEXT.dec);
+    return TEXT.dollarsBefore ? (neg ? '-' : '') + '$' + a : (neg ? '-' : '') + a + ' $';
+  }
   function signed(n) { return (n > 0 ? '+' : '') + dollars(n); }
   function plClass(n) { return n > 0 ? ' sdo-pos' : n < 0 ? ' sdo-neg' : ''; }
   function money(n, cps) { return esc(signed(n)) + '<span class="sdo-dim sdo-ck">(' + esc(shortNum(n * cps)) + ' ' + TEXT.cookies + ')</span>'; }
@@ -173,7 +191,7 @@
   }
   function pctText(pct) {
     if (pct === null || pct === undefined || !isFinite(pct)) return '-';
-    return (pct > 0 ? '+' : '') + Math.round(pct) + ' %';
+    return (pct > 0 ? '+' : '') + Math.round(pct) + TEXT.pct;
   }
   function divbar(pct) {
     var v = pct === null || pct === undefined || !isFinite(pct) ? 0 : pct;
@@ -195,7 +213,7 @@
     var h = Math.floor(m / 60), r = m % 60;
     if (h < 24) return h + ' h ' + (r < 10 ? '0' : '') + r;
     var d = Math.floor(h / 24);
-    return d + ' j ' + (h % 24) + ' h';
+    return d + ' ' + TEXT.day + ' ' + (h % 24) + ' h';
   }
   function lotTitle(l) {
     return hhmmss(l.t) + ' · ' + l.qty + ' × ' + dollars(l.unitPrice + l.unitFee) + ' · ' + pctText(l.pnlPct);
@@ -204,11 +222,11 @@
   function render(view, opened, now) {
     var T = view.totals, cps = view.cps;
     var h = '<div class="sdo-title">' + TEXT.title + '</div><div class="sdo-summary">' +
-      '<span>' + TEXT.value + ' : <b>' + plain(T.value, cps) + '</b></span>' +
-      '<span>' + TEXT.capital + ' : <b>' + plain(T.capital, cps) + '</b></span>' +
-      '<span class="' + plClass(T.unrealized) + '">' + TEXT.unrealized + ' : <b>' + money(T.unrealized, cps) + '</b></span>' +
-      '<span class="' + plClass(T.realized) + '">' + TEXT.realized + ' : <b>' + money(T.realized, cps) + '</b></span>' +
-      '<span>' + TEXT.fees + ' : <b>' + plain(T.fees, cps) + '</b></span></div>' +
+      '<span>' + TEXT.value + TEXT.colon + '<b>' + plain(T.value, cps) + '</b></span>' +
+      '<span>' + TEXT.capital + TEXT.colon + '<b>' + plain(T.capital, cps) + '</b></span>' +
+      '<span class="' + plClass(T.unrealized) + '">' + TEXT.unrealized + TEXT.colon + '<b>' + money(T.unrealized, cps) + '</b></span>' +
+      '<span class="' + plClass(T.realized) + '">' + TEXT.realized + TEXT.colon + '<b>' + money(T.realized, cps) + '</b></span>' +
+      '<span>' + TEXT.fees + TEXT.colon + '<b>' + plain(T.fees, cps) + '</b></span></div>' +
       '<div class="sdo-dim sdo-note">' + TEXT.rateNote + '</div>';
     h += '<div class="sdo-head">' + TEXT.cols.map(function (c) { return '<span>' + c + '</span>'; }).join('') + '</div>';
     view.goods.forEach(function (g) {
@@ -425,6 +443,7 @@
       ledger: ledger,
       init: function () {
         try {
+          setLang(typeof locId !== 'undefined' ? locId : 'EN'); // the game's language, chosen at launch
           var rec = install(Game, typeof document !== 'undefined' ? document : null, ledger);
           Game.registerHook('logic', function () { if (Game.T % Game.fps === 0) rec.tick(); });
           Game.registerHook('reset', function () { ledger.clear(); }); // ascension or hard reset: the market is wiped too
@@ -435,5 +454,5 @@
     });
   }
 
-  if (typeof module !== 'undefined' && module.exports) module.exports = { Ledger: Ledger, render: render, install: install };
+  if (typeof module !== 'undefined' && module.exports) module.exports = { Ledger: Ledger, render: render, install: install, setLang: setLang };
 })();

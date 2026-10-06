@@ -2,10 +2,10 @@
 	"Name": "Suivi des ordres",
 	"ID": "suivi des ordres",
 	"Author": "Akmot9",
-	"Description": "Portefeuille de la Bourse : un lot par achat, ventes FIFO, frais au prorata, P/L latent et réalisé.",
-	"ModVersion": 1,
+	"Description": "Stock market portfolio: one lot per purchase, FIFO sales, pro-rata fees, realized and unrealized P/L in $ and cookies. Read-only, never trades for you. / Portefeuille de la Bourse : un lot par achat, ventes FIFO, frais au prorata, P/L latent et réalisé.",
+	"ModVersion": 2,
 	"GameVersion": 2.053,
-	"Date": "01/10/2026",
+	"Date": "06/10/2026",
 	"Dependencies": [],
 	"AllowSteamAchievs": 1
 }

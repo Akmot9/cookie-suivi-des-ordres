@@ -99,3 +99,22 @@ test('distance to resting value is signed and coloured red (far below) to green 
   assert.match(html, /<span class="sdo-rest" style="color:hsl\(7[0-9],[^"]*">\+10 %<\/span>/);
   assert.doesNotMatch(html, />50 %</, 'no more raw ratio');
 });
+
+test('English when the game is not in French: labels, $ prefix, dot decimals', () => {
+  const { setLang } = require('../mod/main.js');
+  setLang('EN');
+  try {
+    const html = render(view(), {}, 1100);
+    assert.match(html, />Portfolio</);
+    assert.match(html, /Market value: <b>/);
+    assert.match(html, /Unrealized P\/L/);
+    assert.match(html, /\$6\.00/, 'avg cost of Céréales');
+    assert.match(html, /\+\$12\.00/, 'signed realized');
+    assert.match(html, />-50%</, 'distance to resting value');
+    assert.match(html, /3 without history/);
+    assert.doesNotMatch(html, /Valeur|Portefeuille|sans historique|,00/);
+  } finally {
+    setLang('FR');
+  }
+  assert.match(render(view(), {}, 1100), /Portefeuille/, 'back to French');
+});
