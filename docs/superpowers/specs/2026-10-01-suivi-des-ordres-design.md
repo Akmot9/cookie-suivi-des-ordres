@@ -67,7 +67,7 @@ unknown[goodId] = qty                              // stock présent avant le su
 - Un bouton **« Portefeuille »** (`productButton`) est ajouté une fois dans `#row5 .productButtons`, dès que la Bourse existe. Un clic affiche ou masque le panneau `#sdoPanel`, placé à la fin de `#row5`.
 - **Résumé en haut** : valeur de marché, capital investi, P/L latent, P/L réalisé et frais payés. Chaque montant est en $ et en cookies, avec l'échelle courte du jeu (M, B, T, Qa).
 - **Un tableau, une ligne par marchandise active :**
-  - colonnes : quantité (avec, s'il existe, `+N coût inconnu`), stock max, PRU, cours, % du repos, valeur, P/L latent ($ et %), P/L réalisé ;
+  - colonnes : quantité (avec, s'il existe, `+N coût inconnu`), stock max, PRU, cours, écart au repos (signé, coloré du rouge au vert), valeur, P/L latent ($ et %), P/L réalisé ;
   - le latent et le réalisé sont en vert s'ils sont positifs, en rouge s'ils sont négatifs.
 - **Clic sur une ligne** : la liste de ses lots se déplie (heure, quantité restante, prix, frais, P/L latent du lot).
 - Rafraîchissement **seulement quand le panneau est ouvert** : une fois par seconde, et juste après chaque achat ou vente. Le HTML n'est réécrit que s'il a changé.

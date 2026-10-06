@@ -138,7 +138,7 @@
   var TEXT = {
     title: 'Portefeuille', value: 'Valeur de marché', capital: 'Capital investi', unrealized: 'P/L latent',
     realized: 'P/L réalisé', fees: 'Frais payés', unknown: 'coût inconnu', cookies: 'cookies',
-    cols: ['Marchandise', 'Qté', 'PRU', 'Cours', '% repos', 'Valeur', 'P/L latent', 'P/L réalisé'],
+    cols: ['Marchandise', 'Qté', 'PRU', 'Cours', 'Écart repos', 'Valeur', 'P/L latent', 'P/L réalisé'],
     unknownPl: 'hors coût inconnu', noHistory: 'sans historique', lot: 'lot', lots: 'lots',
     lotCols: ['Heure', 'Qté', 'Prix', 'Frais', 'Investi', 'Valeur', 'P/L latent', 'Performance', 'Détention'],
     rateNote: 'Cookies convertis au taux actuel (1 $ = 1 s de production brute max).',
@@ -181,6 +181,12 @@
     return '<span class="sdo-divbar"><span class="sdo-divhalf">' + (v < 0 ? '<span class="sdo-divfill loss" style="width:' + w + '%"></span>' : '') +
       '</span><span class="sdo-divhalf">' + (v > 0 ? '<span class="sdo-divfill gain" style="width:' + w + '%"></span>' : '') + '</span></span>';
   }
+  // Signed distance to the resting value: red when far below, yellow at rest, green above.
+  function restCell(pct) {
+    if (pct === null || !isFinite(pct)) return '<span>-</span>';
+    var hue = Math.max(0, Math.min(120, Math.round(60 + pct * 1.2)));
+    return '<span class="sdo-rest" style="color:hsl(' + hue + ',85%,62%) !important">' + esc(pctText(pct)) + '</span>';
+  }
   function holding(sec) {
     if (!(sec >= 0)) return '-';
     var m = Math.floor(sec / 60);
@@ -208,7 +214,7 @@
     view.goods.forEach(function (g) {
       var p = g.position, isOpen = !!opened[g.id];
       var held = p.qtyKnown + p.qtyUnknown;
-      var pct = g.rest ? Math.round(g.val / g.rest * 100) + ' %' : '';
+      var restPct = g.rest ? (g.val / g.rest - 1) * 100 : null;
       var strip = p.lots.map(function (l) {
         return '<span class="sdo-cell ' + heatClass(l.pnlPct) + '" title="' + esc(lotTitle(l)) + '"></span>';
       }).join('') + (p.qtyUnknown ? '<span class="sdo-cell na" title="' + esc(p.qtyUnknown + ' ' + TEXT.noHistory) + '"></span>' : '');
@@ -223,7 +229,7 @@
         '</button>' +
         '<span>' + held + ' / ' + g.max + '</span>' +
         '<span>' + (p.qtyKnown ? esc(dollars(p.pru)) : '-') + '</span>' +
-        '<span>' + esc(dollars(g.val)) + '</span><span>' + esc(pct) + '</span>' +
+        '<span>' + esc(dollars(g.val)) + '</span>' + restCell(restPct) +
         '<span>' + esc(dollars(p.valueAll)) + '</span>' +
         '<span class="' + plClass(p.unrealized) + '">' + money(p.unrealized, cps) + divbar(unrealPct) + ' ' + esc(pctText(unrealPct)) +
           (p.qtyUnknown ? '<span class="sdo-dim sdo-ck">' + TEXT.unknownPl + '</span>' : '') + '</span>' +
@@ -284,7 +290,7 @@
     '#sdoPanel .sdo-divhalf{position:relative;flex:1}' +
     '#sdoPanel .sdo-divhalf:first-child .sdo-divfill{position:absolute;right:0}#sdoPanel .sdo-divhalf:last-child .sdo-divfill{position:absolute;left:0}' +
     '#sdoPanel .sdo-divfill{display:block;height:100%}#sdoPanel .sdo-divfill.gain{background:#4bd399}#sdoPanel .sdo-divfill.loss{background:#ff6670}' +
-    '#sdoPanel .sdo-dim{opacity:0.6}#sdoPanel .sdo-pos{color:#4bd399 !important}#sdoPanel .sdo-neg{color:#ff6670 !important}' +
+    '#sdoPanel .sdo-rest{font-weight:bold !important}#sdoPanel .sdo-dim{opacity:0.6}#sdoPanel .sdo-pos{color:#4bd399 !important}#sdoPanel .sdo-neg{color:#ff6670 !important}' +
     '#sdoPanel .sdo-ck{display:block !important;font-size:10px !important}#sdoPanel .sdo-note{font-size:10px !important;margin:2px 0 4px}';
 
   function install(game, doc, ledger) {

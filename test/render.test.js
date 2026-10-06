@@ -91,3 +91,11 @@ test('market value counts unknown-cost stock, P/L does not', () => {
   assert.match(html, /1512,00 \$/);
   assert.match(html, /hors coût inconnu/);
 });
+
+test('distance to resting value is signed and coloured red (far below) to green (above)', () => {
+  const html = render(view(), {}, 1100);
+  // Beurre 15 $ vs repos 30 $ -> -50 %, full red; Céréales 11 vs 10 -> +10 %
+  assert.match(html, /<span class="sdo-rest" style="color:hsl\(0,[^"]*">-50 %<\/span>/);
+  assert.match(html, /<span class="sdo-rest" style="color:hsl\(7[0-9],[^"]*">\+10 %<\/span>/);
+  assert.doesNotMatch(html, />50 %</, 'no more raw ratio');
+});

@@ -390,7 +390,7 @@ Insert before the export line:
   var TEXT = {
     title: 'Portefeuille', value: 'Valeur de marché', capital: 'Capital investi', unrealized: 'P/L latent',
     realized: 'P/L réalisé', fees: 'Frais payés', unknown: 'coût inconnu', cookies: 'cookies',
-    cols: ['Marchandise', 'Qté', 'PRU', 'Cours', '% repos', 'Valeur', 'P/L latent', 'P/L réalisé'],
+    cols: ['Marchandise', 'Qté', 'PRU', 'Cours', 'Écart repos', 'Valeur', 'P/L latent', 'P/L réalisé'],
     lotCols: 'heure · qté × prix (+ frais) · latent',
   };
 
